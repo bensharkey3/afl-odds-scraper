@@ -20,7 +20,7 @@ Each run scrapes the following markets:
 | **World Cup Golden Ball** | Player-of-the-tournament odds for every Golden Ball candidate |
 | **World Cup match odds** | Head-to-head odds for all upcoming World Cup matches (the draw is dropped) |
 
-World Cup markets are only scraped up to and including **21 July 2026** (the tournament ends mid-July); after that date the AFL markets continue and the World Cup scrape is skipped.
+The four **World Cup** markets above are **no longer scraped** — the FIFA World Cup 2026 finished in July 2026, so scraping is disabled (`WORLD_CUP_ENABLED = False` in `handler.py`). The AFL markets continue as normal; the World Cup functions and previously collected S3 data are left in place (data ages out via the S3 lifecycle rules). To revive them for the 2030 tournament, flip the flag and update `WORLD_CUP_END_DATE`.
 
 After each run the scraper:
 - Writes JSONL results to S3 (timestamped + latest)
@@ -196,7 +196,7 @@ S3 path: `charts/<market>.png` (one per Parquet file). A line chart with **datet
 
 | Channel | When | Example |
 |---------|------|---------|
-| `sports-odds-scraper` | After every successful scrape | `✅ sports odds scraped at 2026-06-02 12:00:00 AEST — 8 AFL games, 38 Brownlow players, 18 Premiership teams, 30 Rising Star players, 25 Coleman Medal players, 48 World Cup odds, 144 Golden Boot odds, 59 Golden Ball odds, 12 World Cup matches` |
+| `sports-odds-scraper` | After every successful scrape | `✅ sports odds scraped at 2026-06-02 12:00:00 AEST — 8 AFL games, 38 Brownlow players, 18 Premiership teams, 30 Rising Star players, 25 Coleman Medal players` |
 | `sports-odds-scraper` (favourite alerts) | When the favourite flips for any market | `Richmond v Carlton - the favourite has changed from Richmond to Carlton at 1.95` |
 | `sports-odds-scraper` (error alerts) | When a market API fails or returns zero records | `Brownlow: zero records returned` |
 

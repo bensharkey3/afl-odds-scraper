@@ -697,6 +697,7 @@ class TestWorldCupCutoff:
         with patch.object(handler, "datetime", fake_dt), \
              patch.dict(os.environ, {"RESULTS_BUCKET": "b"}), \
              patch.object(handler, "time", MagicMock()), \
+             patch.object(handler, "WORLD_CUP_ENABLED", True), \
              patch.object(handler, "get_afl_events", return_value=[_event()]), \
              patch.object(handler, "get_h2h_market", return_value=_market()), \
              patch.object(handler.s3, "put_object"), \
@@ -725,6 +726,38 @@ class TestWorldCupCutoff:
 
         when = dtmod.datetime(2026, 7, 22, 10, 0, tzinfo=dtmod.timezone.utc)
         self._run_scrape_at(when).assert_not_called()
+
+    def test_disabled_flag_skips_world_cup_and_summary(self):
+        """With WORLD_CUP_ENABLED False, World Cup is never scraped even before the
+        cutoff, and the success summary contains no World Cup text."""
+        import datetime as dtmod
+
+        when = dtmod.datetime(2026, 6, 2, 10, 0, tzinfo=dtmod.timezone.utc)
+        fake_dt = MagicMock()
+        fake_dt.now.return_value = when
+        fake_dt.fromtimestamp.side_effect = dtmod.datetime.fromtimestamp
+        with patch.object(handler, "datetime", fake_dt), \
+             patch.dict(os.environ, {"RESULTS_BUCKET": "b"}), \
+             patch.object(handler, "time", MagicMock()), \
+             patch.object(handler, "WORLD_CUP_ENABLED", False), \
+             patch.object(handler, "get_afl_events", return_value=[_event()]), \
+             patch.object(handler, "get_h2h_market", return_value=_market()), \
+             patch.object(handler.s3, "put_object"), \
+             patch.object(handler, "_list_dated_keys", return_value=[]), \
+             patch.object(handler, "_check_favourite_changes"), \
+             patch.object(handler, "_scrape_brownlow", return_value=1), \
+             patch.object(handler, "_scrape_premiership", return_value=1), \
+             patch.object(handler, "_scrape_rising_star", return_value=1), \
+             patch.object(handler, "_scrape_coleman", return_value=1), \
+             patch.object(handler, "_scrape_world_cup") as mock_wc, \
+             patch.object(handler, "_scrape_world_cup_matches") as mock_wc_matches, \
+             patch.object(handler, "send_slack") as mock_slack:
+            handler._scrape({}, None)
+
+        mock_wc.assert_not_called()
+        mock_wc_matches.assert_not_called()
+        summaries = [c.args[0] for c in mock_slack.call_args_list if "scraped at" in c.args[0]]
+        assert summaries and all("World Cup" not in m for m in summaries)
 
 
 # ── _scrape_world_cup per-market counts ───────────────────────────────────────
@@ -971,6 +1004,7 @@ class TestScrapeAlerts:
         with patch.object(handler, "datetime", fake_dt), \
              patch.dict(os.environ, {"RESULTS_BUCKET": "b"}), \
              patch.object(handler, "time", MagicMock()), \
+             patch.object(handler, "WORLD_CUP_ENABLED", True), \
              patch.object(handler, "get_afl_events", patches["get_afl_events"]), \
              patch.object(handler, "get_h2h_market", patches["get_h2h_market"]), \
              patch.object(handler.s3, "put_object"), \
