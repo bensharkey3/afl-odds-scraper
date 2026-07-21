@@ -27,6 +27,9 @@ WORLD_CUP_EVENT_NAME = "World Cup 2026 Outrights"
 WORLD_CUP_MATCH_MARKET_SORT = "MR"
 # Tournament finishes mid-July 2026 — stop scraping World Cup odds after this date.
 WORLD_CUP_END_DATE = date(2026, 7, 21)
+# FIFA World Cup 2026 is over — scraping disabled. Flip to True to re-enable
+# (e.g. for the 2030 tournament) and update WORLD_CUP_END_DATE.
+WORLD_CUP_ENABLED = False
 # (Sportsbet market name, S3 prefix, label used in alerts/summary, partial-match fallback keyword)
 WORLD_CUP_MARKETS = [
     (["Winner 2026"], "world-cup-winner", "World Cup Winner", "world cup winner", True),
@@ -902,9 +905,7 @@ def _scrape(event: dict, context) -> dict:
         print(msg)
         send_slack(msg, "SLACK_ALERTS_PARAM_NAME")
 
-    wc_counts = {prefix: 0 for _, prefix, _, _, _ in WORLD_CUP_MARKETS}
-    wc_match_count = 0
-    if now.date() <= WORLD_CUP_END_DATE:
+    if WORLD_CUP_ENABLED and now.date() <= WORLD_CUP_END_DATE:
         try:
             wc_counts = _scrape_world_cup(bucket, now, scraped_at)
             for _, prefix, label, _, alert_on_missing in WORLD_CUP_MARKETS:
@@ -928,11 +929,7 @@ def _scrape(event: dict, context) -> dict:
         f":white_check_mark: sports odds scraped at {_melbourne_timestamp(now)} — "
         f"{len(results)} AFL games, {brownlow_count} Brownlow players, "
         f"{premiership_count} Premiership teams, {rising_star_count} Rising Star players, "
-        f"{coleman_count} Coleman Medal players, "
-        f"{wc_counts['world-cup-winner']} World Cup odds, "
-        f"{wc_counts['world-cup-golden-boot']} Golden Boot odds, "
-        f"{wc_counts['world-cup-golden-ball']} Golden Ball odds, "
-        f"{wc_match_count} World Cup matches"
+        f"{coleman_count} Coleman Medal players"
     )
 
     # Fire-and-forget the Parquet builder so it rebuilds the odds-over-time files.

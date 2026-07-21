@@ -29,16 +29,14 @@ lambda_client = boto3.client("lambda")
 #   "player"    — one row, name from record["player"]
 #   "team"      — one row, name from record["team"]
 #   "selection" — one row, name from record["selection"]
+# World Cup 2026 endpoints removed — the tournament is over and scraping is disabled,
+# so their parquet files are frozen at their final state (existing S3 data untouched).
 ENDPOINTS = [
     ("odds", "h2h"),
-    ("world-cup-matches", "h2h"),
     ("brownlow", "player"),
     ("rising-star", "player"),
     ("coleman", "player"),
     ("premiership", "team"),
-    ("world-cup-winner", "selection"),
-    ("world-cup-golden-boot", "selection"),
-    ("world-cup-golden-ball", "selection"),
 ]
 
 OUTPUT_PREFIX = "parquet"
