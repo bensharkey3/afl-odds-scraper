@@ -2,8 +2,6 @@
 
 Scrapes AFL and FIFA World Cup 2026 odds from the Sportsbet API and writes JSONL files to S3. Runs as an AWS Lambda function on a scheduled trigger every hour, 24 hours a day (Melbourne time).
 
-Two downstream Lambdas then turn the raw snapshots into analytics artifacts: a **parquet builder** consolidates each market's history into a tidy Parquet file, and a **chart builder** renders an odds-over-time line chart PNG for each market. The three Lambdas run as a chain — each async-invokes the next when it completes.
-
 ## What it does
 
 Each run scrapes the following markets:
@@ -26,7 +24,6 @@ After each run the scraper:
 - Writes JSONL results to S3 (timestamped + latest)
 - Sends a Slack summary notification
 - Detects when the betting favourite has changed and sends a separate Slack alert
-- Async-invokes the **parquet builder**, which in turn async-invokes the **chart builder**
 
 ## Architecture
 
@@ -37,31 +34,15 @@ flowchart TD
     SSM[(SSM Parameter Store<br/>Slack webhook URLs)] --> SCRAPER
 
     subgraph L1[Lambda: sports-odds-scraper]
-        SCRAPER[Scrape 9 markets]
-    end
-    subgraph L2[Lambda: afl-odds-parquet-builder]
-        PARQUET[Rebuild Parquet<br/>per market]
-    end
-    subgraph L3[Lambda: afl-odds-chart-builder]
-        CHART[Render line-chart<br/>PNG per market]
+        SCRAPER[Scrape AFL markets]
     end
 
-    SCRAPER -->|write JSONL<br/>9 prefixes| S3[(S3 results bucket)]
+    SCRAPER -->|write JSONL<br/>per prefix| S3[(S3 results bucket)]
     SCRAPER -->|read history for<br/>favourite detection| S3
     SCRAPER -->|summary + favourite alerts| SLACK([Slack])
-    SCRAPER -->|async invoke on completion| PARQUET
-
-    S3 -->|read JSONL snapshots| PARQUET
-    PARQUET -->|write parquet/*.parquet| S3
-    PARQUET -->|async invoke on completion| CHART
-
-    S3 -->|read parquet/*| CHART
-    CHART -->|write charts/*.png| S3
 ```
 
-**Pipeline:** `scraper → parquet builder → chart builder`, chained via best-effort async `lambda.invoke(InvocationType="Event")` calls (a downstream failure never fails the upstream job).
-
-**Packaging:** the scraper and parquet builder share one zip and pure-Python deps; the parquet builder also uses the AWS-managed *SDK for pandas* layer (pandas + pyarrow). The chart builder is **self-contained** — its own zip bundling `pandas` + `matplotlib` + `fastparquet` (no layer), so there is a single consistent `numpy` and no risk of the 250 MB unzipped limit.
+**Packaging:** the scraper ships as a single `lambda.zip` with pure-Python deps only (`requests`, `tzdata`).
 
 All infrastructure is managed with Terraform and deployed to AWS `ap-southeast-2`.
 
@@ -170,28 +151,6 @@ Soccer's match-result market is the three-way "Win-Draw-Win"; the draw selection
 }
 ```
 
-## Odds-over-time artifacts
-
-After the scrape, the **parquet builder** consolidates each market's full snapshot history into one Parquet file, and the **chart builder** renders a line chart from it.
-
-### Parquet
-
-S3 path: `parquet/<market>.parquet` (one per scraped prefix — `odds`, `brownlow`, `premiership`, `rising-star`, `coleman`, `world-cup-winner`, `world-cup-golden-boot`, `world-cup-golden-ball`, `world-cup-matches`). Rebuilt in full each run (idempotent).
-
-Each file is a tidy long table with exactly three columns:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `date` | datetime | Snapshot time (parsed from the JSONL object key, UTC) |
-| `selection` | string | Player / team / match-selection name |
-| `odds` | float | Odds at that snapshot |
-
-For head-to-head markets (`odds`, `world-cup-matches`) each match produces two rows whose `selection` embeds the match name, e.g. `"Richmond v Carlton - Richmond"`, so a price is never ambiguous while keeping the three-column shape.
-
-### Charts
-
-S3 path: `charts/<market>.png` (one per Parquet file). A line chart with **datetime on the x-axis**, **odds on the y-axis**, and one distinctly-coloured line per `selection` (plus a legend).
-
 ## Slack notifications
 
 | Channel | When | Example |
@@ -213,10 +172,7 @@ Webhook URLs are stored in AWS SSM Parameter Store as `SecureString`:
 ```
 ├── src/
 │   ├── handler.py              # Scraper Lambda — scraping, S3 writes, Slack notifications
-│   ├── parquet_builder.py      # Parquet builder Lambda — JSONL → parquet/*.parquet
-│   ├── chart_builder.py        # Chart builder Lambda — parquet/* → charts/*.png
-│   ├── requirements.txt        # Shared deps for scraper + parquet builder (requests, tzdata)
-│   └── requirements-chart.txt  # Chart builder deps (pandas, numpy, fastparquet, matplotlib)
+│   └── requirements.txt        # Scraper deps (requests, tzdata)
 ├── infrastructure/
 │   ├── main.tf                 # All AWS resources
 │   ├── variables.tf
@@ -228,7 +184,7 @@ Webhook URLs are stored in AWS SSM Parameter Store as `SecureString`:
 └── Makefile                    # Build, deploy, invoke, logs helpers
 ```
 
-The scraper and parquet builder share `lambda.zip` (handlers `handler.lambda_handler`, `handler.s3_lambda_handler`, `parquet_builder.parquet_handler`); the chart builder ships as its own `chart-lambda.zip`. Build/upload both with `make deploy` (or `make build` / `make build-chart` individually).
+The scraper ships as `lambda.zip` (handlers `handler.lambda_handler` and `handler.s3_lambda_handler`). Build/upload with `make deploy` (or `make build` / `make upload` individually).
 
 ## Prerequisites
 
