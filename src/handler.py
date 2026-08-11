@@ -56,7 +56,6 @@ DELAY_BETWEEN_REQUESTS = 0.5
 
 s3 = boto3.client("s3")
 ssm = boto3.client("ssm")
-lambda_client = boto3.client("lambda")
 
 _webhook_cache: dict[str, str] = {}
 
@@ -931,17 +930,5 @@ def _scrape(event: dict, context) -> dict:
         f"{premiership_count} Premiership teams, {rising_star_count} Rising Star players, "
         f"{coleman_count} Coleman Medal players"
     )
-
-    # Fire-and-forget the Parquet builder so it rebuilds the odds-over-time files.
-    # Best-effort: a failure here must never fail the scrape.
-    parquet_fn = os.environ.get("PARQUET_FUNCTION_NAME")
-    if parquet_fn:
-        try:
-            lambda_client.invoke(
-                FunctionName=parquet_fn, InvocationType="Event", Payload=b"{}"
-            )
-            print(f"Triggered parquet builder: {parquet_fn}")
-        except Exception as e:
-            print(f"Could not trigger parquet builder: {e}")
 
     return {"statusCode": 200, "games": len(results), "s3Key": dated_key}
